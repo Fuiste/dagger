@@ -24,8 +24,12 @@ export type TaskExecutionResult = {
 }
 
 type LocalTaskStatus = Extract<TaskStatus, "pending" | "queued" | "running" | "succeeded" | "failed" | "skipped">
+type TerminalStatus = Extract<LocalTaskStatus, "succeeded" | "failed" | "skipped">
 
 const nowIso = () => new Date().toISOString()
+
+const isTerminal = (status: LocalTaskStatus | undefined) =>
+  status === "succeeded" || status === "failed" || status === "skipped"
 
 const toFailureMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
@@ -70,12 +74,19 @@ export const runScheduler = <R>(options: {
         yield* Deferred.succeed(done, snapshot)
       })
 
-    const markStatus = (taskId: string, status: LocalTaskStatus) =>
-      Ref.update(statuses, (current) => new Map<string, LocalTaskStatus>(current).set(taskId, status))
+    const claimTerminalStatus = (taskId: string, next: TerminalStatus) =>
+      Ref.modify(statuses, (current) => {
+        const status = current.get(taskId)
 
-    const completeTask = (taskId: string, status: Extract<LocalTaskStatus, "succeeded" | "failed" | "skipped">) =>
+        if (isTerminal(status)) {
+          return [false, current] as const
+        }
+
+        return [true, new Map<string, LocalTaskStatus>(current).set(taskId, next)] as const
+      })
+
+    const decrementOutstanding = () =>
       Effect.gen(function*() {
-        yield* markStatus(taskId, status)
         const remaining = yield* Ref.updateAndGet(outstandingCount, (count) => count - 1)
 
         if (remaining === 0) {
@@ -83,26 +94,35 @@ export const runScheduler = <R>(options: {
         }
       })
 
+    const markStatus = (taskId: string, status: LocalTaskStatus) =>
+      Ref.update(statuses, (current) => new Map<string, LocalTaskStatus>(current).set(taskId, status))
+
+    const emitSkip = (taskId: string, reason: string) =>
+      Effect.gen(function*() {
+        const claimed = yield* claimTerminalStatus(taskId, "skipped")
+
+        if (!claimed) {
+          return
+        }
+
+        yield* options.stateService.append(
+          new TaskSkippedEvent({
+            taskId,
+            timestamp: nowIso(),
+            reason
+          })
+        )
+        yield* decrementOutstanding()
+      })
+
     const skipPendingTasks = (reason: string) =>
       Effect.gen(function*() {
         const currentStatuses = yield* Ref.get(statuses)
-        const skippedTaskIds = [...currentStatuses.entries()]
+        const candidates = [...currentStatuses.entries()]
           .filter(([, status]) => status === "pending" || status === "queued")
           .map(([taskId]) => taskId)
 
-        yield* Effect.forEach(skippedTaskIds, (taskId) =>
-          Effect.gen(function*() {
-            yield* options.stateService.append(
-              new TaskSkippedEvent({
-                taskId,
-                timestamp: nowIso(),
-                reason
-              })
-            )
-            yield* completeTask(taskId, "skipped")
-          })
-        )
-
+        yield* Effect.forEach(candidates, (taskId) => emitSkip(taskId, reason))
         yield* finishRun()
       })
 
@@ -141,6 +161,12 @@ export const runScheduler = <R>(options: {
 
     const processSuccess = (task: TaskDefinition, result: TaskExecutionResult) =>
       Effect.gen(function*() {
+        const claimed = yield* claimTerminalStatus(task.id, "succeeded")
+
+        if (!claimed) {
+          return
+        }
+
         yield* options.stateService.append(
           new TaskSucceededEvent({
             taskId: task.id,
@@ -149,7 +175,7 @@ export const runScheduler = <R>(options: {
             summary: result.summary
           })
         )
-        yield* completeTask(task.id, "succeeded")
+        yield* decrementOutstanding()
 
         const failureMessage = yield* Ref.get(failureMessageRef)
 
@@ -174,6 +200,12 @@ export const runScheduler = <R>(options: {
 
     const processFailure = (taskId: string, error: unknown) =>
       Effect.gen(function*() {
+        const claimed = yield* claimTerminalStatus(taskId, "failed")
+
+        if (!claimed) {
+          return
+        }
+
         const message = toFailureMessage(error)
 
         yield* Ref.set(failureMessageRef, message)
@@ -184,7 +216,7 @@ export const runScheduler = <R>(options: {
             message
           })
         )
-        yield* completeTask(taskId, "failed")
+        yield* decrementOutstanding()
       })
 
     const runTask = (taskId: string) =>
@@ -192,14 +224,7 @@ export const runScheduler = <R>(options: {
         const failureMessage = yield* Ref.get(failureMessageRef)
 
         if (failureMessage !== undefined) {
-          yield* options.stateService.append(
-            new TaskSkippedEvent({
-              taskId,
-              timestamp: nowIso(),
-              reason: failureMessage
-            })
-          )
-          yield* completeTask(taskId, "skipped")
+          yield* emitSkip(taskId, failureMessage)
           return
         }
 

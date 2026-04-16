@@ -48,6 +48,47 @@ const failureGraphMarkdown = `
 - c -> d
 `
 
+const concurrentFailureGraphMarkdown = `
+## Tasks
+
+### lead1
+- prompt: Leader 1.
+
+### lead2
+- prompt: Leader 2.
+
+### lead3
+- prompt: Leader 3.
+
+### lead4
+- prompt: Leader 4.
+
+### follow1
+- prompt: Follower 1.
+
+### follow2
+- prompt: Follower 2.
+
+### follow3
+- prompt: Follower 3.
+
+### follow4
+- prompt: Follower 4.
+
+## Dependencies
+
+- lead1 -> follow1
+- lead2 -> follow1
+- lead1 -> follow2
+- lead3 -> follow2
+- lead2 -> follow3
+- lead4 -> follow3
+- lead3 -> follow4
+- lead4 -> follow4
+`
+
+const terminalTags = new Set(["TaskSucceededEvent", "TaskFailedEvent", "TaskSkippedEvent"])
+
 describe("runScheduler", () => {
   test("launches newly unblocked children after all dependencies succeed", async () => {
     const graph = await Effect.runPromise(parseMarkdownGraph(parallelGraphMarkdown))
@@ -131,5 +172,50 @@ describe("runScheduler", () => {
       ["c", "skipped"],
       ["d", "skipped"]
     ])
+  })
+
+  test("emits exactly one terminal event per task when leaders fail concurrently", async () => {
+    const graph = await Effect.runPromise(parseMarkdownGraph(concurrentFailureGraphMarkdown))
+    const stateRootDir = await mkdtemp(join(tmpdir(), "dagger-scheduler-"))
+
+    const state = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const stateService = yield* makeStateService({
+            graph,
+            runId: "scheduler-terminal-invariant",
+            stateRootDir
+          })
+
+          return yield* runScheduler({
+            graph,
+            stateService,
+            maxConcurrency: 4,
+            executeTask: (task) =>
+              task.id === "lead1" || task.id === "lead3"
+                ? Effect.yieldNow.pipe(
+                    Effect.andThen(Effect.fail(new Error(`${task.id} failed`)))
+                  )
+                : Effect.yieldNow.pipe(
+                    Effect.as({ summary: `${task.id} done` })
+                  )
+          })
+        })
+      )
+    )
+
+    const terminalEventsByTask = state.events.reduce(
+      (counts, event) =>
+        terminalTags.has(event._tag)
+          ? counts.set(event.taskId, (counts.get(event.taskId) ?? 0) + 1)
+          : counts,
+      new Map<string, number>()
+    )
+
+    expect(state.tasks.length).toBe(8)
+    for (const task of state.tasks) {
+      expect([task.id, terminalEventsByTask.get(task.id) ?? 0]).toEqual([task.id, 1])
+    }
+    expect(state.status).toBe("failed")
   })
 })
