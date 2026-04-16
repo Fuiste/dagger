@@ -1,34 +1,25 @@
 import { Effect, Schema } from "effect"
 
 import { type RunConfig } from "../domain/config"
-import { TaskDefinition } from "../domain/task-graph"
+import { type TaskDefinition } from "../domain/task-graph"
 import { type RunState } from "../state/run-state"
 
 export class HarnessError extends Schema.TaggedErrorClass<HarnessError>()("HarnessError", {
   message: Schema.String
 }) {}
 
-export class HarnessTaskInput extends Schema.Class<HarnessTaskInput>("HarnessTaskInput")({
-  runConfig: Schema.Unknown,
-  task: TaskDefinition,
-  statePath: Schema.String,
-  cwd: Schema.String
-}) {}
-
-export class HarnessSummaryInput extends Schema.Class<HarnessSummaryInput>("HarnessSummaryInput")({
-  runConfig: Schema.Unknown,
-  statePath: Schema.String,
-  cwd: Schema.String,
-  runState: Schema.Unknown
-}) {}
-
-export type TaskHarnessInput = Omit<HarnessTaskInput, "runConfig"> & {
+export type TaskHarnessInput = {
   readonly runConfig: RunConfig
+  readonly task: TaskDefinition
+  readonly statePath: string
+  readonly cwd: string
 }
 
-export type SummaryHarnessInput = Omit<HarnessSummaryInput, "runState" | "runConfig"> & {
+export type SummaryHarnessInput = {
   readonly runConfig: RunConfig
   readonly runState: RunState
+  readonly statePath: string
+  readonly cwd: string
 }
 
 export type HarnessTaskResult = {
