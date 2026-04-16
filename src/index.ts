@@ -1,10 +1,13 @@
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
 
+import { runDo } from "./app/run-do"
 import { makeProgram } from "./cli/do"
 
-const main = makeProgram(() =>
-  Effect.log("dagger runtime is not implemented yet")
-).pipe(Effect.provide(BunServices.layer))
+const main = makeProgram(runDo).pipe(Effect.provide(BunServices.layer)) as Effect.Effect<
+  void,
+  unknown,
+  never
+>
 
 BunRuntime.runMain(main)
