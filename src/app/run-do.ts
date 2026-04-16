@@ -40,7 +40,7 @@ export const renderDryRun = (
     ...levels.map((level, index) => `Level ${index + 1}: ${level.join(", ")}`)
   ].join("\n")
 
-const defaultHarnessForConfig = (runConfig: RunConfig): HarnessShape => {
+export const defaultHarnessForConfig = (runConfig: RunConfig): HarnessShape => {
   switch (runConfig.harness) {
     case "cursor":
       return makeCursorHarness()
@@ -53,7 +53,8 @@ const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>
       const harness = yield* Harness
       const stateService = yield* makeStateService({
         graph,
-        runId: crypto.randomUUID()
+        runId: crypto.randomUUID(),
+        stateRootDir: `${runConfig.cwd}/.dagger/runs`
       })
       const runState = yield* runScheduler({
         graph,
@@ -95,6 +96,5 @@ export const runDo = (runConfig: RunConfig) =>
             Effect.flatMap((levels) => Console.log(renderDryRun(runConfig.planPath, graph, levels)))
           )
         : executeGraph(runConfig, graph)
-    ),
-    Effect.provideService(Harness, defaultHarnessForConfig(runConfig))
+    )
   )
