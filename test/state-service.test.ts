@@ -3,10 +3,10 @@ import { mkdtemp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-import { Effect } from "effect"
+import { Cause, Effect, Exit, Ref } from "effect"
 
 import { parseMarkdownGraph } from "../src/parse/markdown-graph"
-import { makeStateService } from "../src/state/state-service"
+import { StateServiceError, makeStateService } from "../src/state/state-service"
 import {
   TaskQueuedEvent,
   TaskStartedEvent,
@@ -82,5 +82,46 @@ describe("makeStateService", () => {
     })
     expect(result.persisted.status).toBe("succeeded")
     expect(result.persisted.events).toHaveLength(3)
+  })
+
+  test("surfaces background writer failures on subsequent append and flush", async () => {
+    const graph = await Effect.runPromise(parseMarkdownGraph(simpleGraphMarkdown))
+    const stateRootDir = await mkdtemp(join(tmpdir(), "dagger-state-fail-"))
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const writeCount = yield* Ref.make(0)
+          const stateService = yield* makeStateService({
+            graph,
+            runId: "writer-error",
+            stateRootDir,
+            writeRunState: () =>
+              Effect.gen(function*() {
+                const count = yield* Ref.updateAndGet(writeCount, (value) => value + 1)
+
+                if (count > 1) {
+                  return yield* Effect.fail(new StateServiceError({ message: "disk full" }))
+                }
+              })
+          })
+
+          yield* stateService.append(
+            new TaskQueuedEvent({
+              taskId: "scaffold",
+              timestamp: "2026-04-16T00:00:00.000Z"
+            })
+          )
+          yield* stateService.flush
+        })
+      )
+    )
+
+    expect(Exit.isFailure(exit)).toBe(true)
+    if (Exit.isFailure(exit)) {
+      const error = Cause.squash(exit.cause)
+      expect(error).toBeInstanceOf(StateServiceError)
+      expect((error as StateServiceError).message).toBe("disk full")
+    }
   })
 })
