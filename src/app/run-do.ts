@@ -5,6 +5,7 @@ import { Console, Effect, Schema } from "effect"
 import { type RunConfig } from "../domain/config"
 import { computeExecutionLevels, type TaskGraph } from "../domain/task-graph"
 import { makeCursorHarness } from "../harness/cursor"
+import { Harness, type HarnessShape } from "../harness/harness"
 import { finalizeRun } from "../runtime/finalize-run"
 import { runScheduler } from "../runtime/scheduler"
 import { parseMarkdownGraph } from "../parse/markdown-graph"
@@ -34,7 +35,7 @@ export const renderDryRun = (
     ...levels.map((level, index) => `Level ${index + 1}: ${level.join(", ")}`)
   ].join("\n")
 
-const makeHarnessForConfig = (runConfig: RunConfig) => {
+const defaultHarnessForConfig = (runConfig: RunConfig): HarnessShape => {
   switch (runConfig.harness) {
     case "cursor":
       return makeCursorHarness()
@@ -44,11 +45,11 @@ const makeHarnessForConfig = (runConfig: RunConfig) => {
 const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>
   Effect.scoped(
     Effect.gen(function*() {
+      const harness = yield* Harness
       const stateService = yield* makeStateService({
         graph,
         runId: crypto.randomUUID()
       })
-      const harness = makeHarnessForConfig(runConfig)
       const runState = yield* runScheduler({
         graph,
         stateService,
@@ -64,7 +65,6 @@ const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>
           })
       })
       const summary = yield* finalizeRun({
-        harness,
         runConfig,
         stateService,
         runState
@@ -95,5 +95,6 @@ export const runDo = (runConfig: RunConfig) =>
             Effect.flatMap((levels) => Console.log(renderDryRun(runConfig.planPath, graph, levels)))
           )
         : executeGraph(runConfig, graph)
-    )
+    ),
+    Effect.provideService(Harness, defaultHarnessForConfig(runConfig))
   )

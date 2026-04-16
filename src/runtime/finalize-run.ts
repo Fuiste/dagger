@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises"
 import { Effect, Schema } from "effect"
 
 import { type RunConfig } from "../domain/config"
-import { type Harness } from "../harness/harness"
+import { Harness } from "../harness/harness"
 import { type StateService } from "../state/state-service"
 import { type RunState } from "../state/run-state"
 
@@ -21,15 +21,16 @@ const deleteStateFile = (path: string) =>
   })
 
 export const finalizeRun = (options: {
-  readonly harness: Harness
   readonly runConfig: RunConfig
   readonly stateService: StateService
   readonly runState: RunState
 }) =>
   Effect.gen(function*() {
+    const harness = yield* Harness
+
     yield* options.stateService.flush
 
-    return yield* options.harness.summarizeRun({
+    return yield* harness.summarizeRun({
       runConfig: options.runConfig,
       statePath: options.stateService.path,
       cwd: options.runConfig.cwd,

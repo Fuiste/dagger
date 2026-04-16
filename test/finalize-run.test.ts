@@ -8,7 +8,7 @@ import { Effect, Option } from "effect"
 import { renderDryRun } from "../src/app/run-do"
 import { makeRunConfig } from "../src/domain/config"
 import { computeExecutionLevels } from "../src/domain/task-graph"
-import { HarnessError, type Harness } from "../src/harness/harness"
+import { Harness, HarnessError, type HarnessShape } from "../src/harness/harness"
 import { parseMarkdownGraph } from "../src/parse/markdown-graph"
 import { finalizeRun } from "../src/runtime/finalize-run"
 import { makeStateService } from "../src/state/state-service"
@@ -42,7 +42,7 @@ describe("finalizeRun", () => {
       })
     )
     const stateRootDir = await mkdtemp(join(tmpdir(), "dagger-finalize-"))
-    const harness: Harness = {
+    const harness: HarnessShape = {
       executeTask: () => Effect.succeed({}),
       summarizeRun: (input) =>
         Effect.succeed(`summary for ${input.runState.tasks.length} tasks`)
@@ -58,11 +58,10 @@ describe("finalizeRun", () => {
           })
           const runState = yield* stateService.snapshot
           const summary = yield* finalizeRun({
-            harness,
             runConfig,
             stateService,
             runState
-          })
+          }).pipe(Effect.provideService(Harness, harness))
           const exists = yield* Effect.promise(() => Bun.file(stateService.path).exists())
 
           return {
@@ -93,7 +92,7 @@ describe("finalizeRun", () => {
       })
     )
     const stateRootDir = await mkdtemp(join(tmpdir(), "dagger-finalize-"))
-    const harness: Harness = {
+    const harness: HarnessShape = {
       executeTask: () => Effect.succeed({}),
       summarizeRun: () =>
         Effect.fail(
@@ -114,11 +113,10 @@ describe("finalizeRun", () => {
           const runState = yield* stateService.snapshot
           const exit = yield* Effect.exit(
             finalizeRun({
-              harness,
               runConfig,
               stateService,
               runState
-            })
+            }).pipe(Effect.provideService(Harness, harness))
           )
           const exists = yield* Effect.promise(() => Bun.file(stateService.path).exists())
 

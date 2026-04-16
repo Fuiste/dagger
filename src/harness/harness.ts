@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect"
+import { Context, Effect, Schema } from "effect"
 
 import { type RunConfig } from "../domain/config"
 import { type TaskDefinition } from "../domain/task-graph"
@@ -27,7 +27,9 @@ export type HarnessTaskResult = {
   readonly summary?: string
 }
 
-export type Harness = {
+export type HarnessShape = {
   readonly executeTask: (input: TaskHarnessInput) => Effect.Effect<HarnessTaskResult, HarnessError>
   readonly summarizeRun: (input: SummaryHarnessInput) => Effect.Effect<string, HarnessError>
 }
+
+export class Harness extends Context.Service<Harness, HarnessShape>()("dagger/Harness") {}

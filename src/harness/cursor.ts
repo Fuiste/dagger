@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { type TaskDefinition } from "../domain/task-graph"
 import { type RunState } from "../state/run-state"
 import {
-  type Harness,
+  type HarnessShape,
   HarnessError,
   type SummaryHarnessInput,
   type TaskHarnessInput
@@ -113,7 +113,7 @@ const ensureSuccessfulExit = (result: {
 
 export const makeCursorHarness = (options?: {
   readonly command?: string
-}): Harness => {
+}): HarnessShape => {
   const command = options?.command ?? process.env.DAGGER_CURSOR_COMMAND ?? defaultCursorCommand
 
   return {
