@@ -11,9 +11,13 @@ import {
 import { TaskFinishNoteEvent, TaskStartNoteEvent, parseHarnessOutput } from "./protocol"
 
 const defaultCursorCommand = "cursor-agent"
+const defaultCursorArgs = ["-p", "--force", "--output-format", "text"] as const
 
 const compact = (parts: ReadonlyArray<string | undefined>) =>
   parts.filter((part): part is string => part !== undefined && part.length > 0)
+
+const tokenizeArgs = (value: string | undefined) =>
+  value === undefined ? [] : value.split(/\s+/).filter((token) => token.length > 0)
 
 const compactTaskResult = (result: {
   readonly note: string | undefined
@@ -49,6 +53,7 @@ const makeTaskPrompt = (input: TaskHarnessInput) =>
     renderTaskBody(input.task),
     renderStateInstructions(input.statePath),
     input.runConfig.model === undefined ? undefined : `Preferred model: ${input.runConfig.model}`,
+    // cursor-agent doesn't expose a dedicated thinking flag, so this remains advisory prompt context.
     input.runConfig.thinking === undefined
       ? undefined
       : `Preferred thinking level: ${input.runConfig.thinking}`
@@ -68,11 +73,12 @@ const makeSummaryPrompt = (input: SummaryHarnessInput) =>
     summarizeTasks(input.runState)
   ]).join("\n\n")
 
-const runCommand = (command: string, cwd: string, prompt: string) =>
+const runCommand = (command: string, args: ReadonlyArray<string>, cwd: string, prompt: string) =>
   Effect.tryPromise({
     try: async () => {
-      const subprocess = Bun.spawn(["sh", "-lc", command], {
+      const subprocess = Bun.spawn([command, ...args], {
         cwd,
+        env: process.env,
         stdin: new Blob([prompt]),
         stdout: "pipe",
         stderr: "pipe"
@@ -115,10 +121,18 @@ export const makeCursorHarness = (options?: {
   readonly command?: string
 }): HarnessShape => {
   const command = options?.command ?? process.env.DAGGER_CURSOR_COMMAND ?? defaultCursorCommand
+  const extraArgs = tokenizeArgs(process.env.DAGGER_CURSOR_EXTRA_ARGS)
+  const makeArgs = (runConfig: TaskHarnessInput["runConfig"] | SummaryHarnessInput["runConfig"]) =>
+    compact([
+      ...defaultCursorArgs,
+      ...extraArgs,
+      runConfig.model === undefined ? undefined : "--model",
+      runConfig.model
+    ])
 
   return {
     executeTask: (input) =>
-      runCommand(command, input.cwd, makeTaskPrompt(input)).pipe(
+      runCommand(command, makeArgs(input.runConfig), input.cwd, makeTaskPrompt(input)).pipe(
         Effect.flatMap(ensureSuccessfulExit),
         Effect.map(({ stdout }) => {
           const parsed = parseHarnessOutput(stdout)
@@ -146,7 +160,7 @@ export const makeCursorHarness = (options?: {
         })
       ),
     summarizeRun: (input) =>
-      runCommand(command, input.cwd, makeSummaryPrompt(input)).pipe(
+      runCommand(command, makeArgs(input.runConfig), input.cwd, makeSummaryPrompt(input)).pipe(
         Effect.flatMap(ensureSuccessfulExit),
         Effect.map(({ stdout }) => {
           const parsed = parseHarnessOutput(stdout)
