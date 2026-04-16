@@ -1,6 +1,4 @@
-import { rm } from "node:fs/promises"
-
-import { Effect, Schema } from "effect"
+import { Effect, FileSystem, Schema } from "effect"
 
 import { type RunConfig } from "../domain/config"
 import { Harness } from "../harness/harness"
@@ -12,12 +10,16 @@ export class FinalizeRunError extends Schema.TaggedErrorClass<FinalizeRunError>(
 }) {}
 
 const deleteStateFile = (path: string) =>
-  Effect.tryPromise({
-    try: () => rm(path, { force: true }),
-    catch: (error) =>
-      new FinalizeRunError({
-        message: error instanceof Error ? error.message : `Unable to delete ${path}`
-      })
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+
+    yield* fs.remove(path, { force: true }).pipe(
+      Effect.mapError((error) =>
+        new FinalizeRunError({
+          message: error.message.length > 0 ? error.message : `Unable to delete ${path}`
+        })
+      )
+    )
   })
 
 export const finalizeRun = (options: {

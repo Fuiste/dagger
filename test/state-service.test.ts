@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
+import { BunFileSystem } from "@effect/platform-bun"
 import { Cause, Effect, Exit, Ref } from "effect"
 
 import { parseMarkdownGraph } from "../src/parse/markdown-graph"
@@ -67,7 +68,7 @@ describe("makeStateService", () => {
             persisted
           }
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     expect(result.snapshot.status).toBe("succeeded")
@@ -114,7 +115,7 @@ describe("makeStateService", () => {
           )
           yield* stateService.flush
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     expect(Exit.isFailure(exit)).toBe(true)

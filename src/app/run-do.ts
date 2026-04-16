@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises"
-
-import { Console, Effect, Schema } from "effect"
+import { Console, Effect, FileSystem, Schema } from "effect"
 
 import { type RunConfig } from "../domain/config"
 import { computeExecutionLevels, type TaskGraph } from "../domain/task-graph"
@@ -19,12 +17,16 @@ const toDoCommandError = (error: { readonly message: string }) =>
   new DoCommandError({ message: error.message })
 
 const readPlanMarkdown = (planPath: string) =>
-  Effect.tryPromise({
-    try: () => readFile(planPath, "utf8"),
-    catch: (error) =>
-      new DoCommandError({
-        message: error instanceof Error ? error.message : `Unable to read ${planPath}`
-      })
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+
+    return yield* fs.readFileString(planPath).pipe(
+      Effect.mapError((error) =>
+        new DoCommandError({
+          message: error.message.length > 0 ? error.message : `Unable to read ${planPath}`
+        })
+      )
+    )
   })
 
 export const renderDryRun = (

@@ -1,7 +1,6 @@
-import { mkdir } from "node:fs/promises"
 import { join } from "node:path"
 
-import { Deferred, Effect, Queue, Ref, Schema } from "effect"
+import { Deferred, Effect, FileSystem, Queue, Ref, Schema } from "effect"
 
 import { type TaskGraph } from "../domain/task-graph"
 import {
@@ -33,17 +32,27 @@ export type StateService = {
   readonly snapshot: Effect.Effect<RunState>
 }
 
-export type WriteRunStateFn = (path: string, state: RunState) => Effect.Effect<void, StateServiceError>
+export type WriteRunStateFn = (
+  path: string,
+  state: RunState
+) => Effect.Effect<void, StateServiceError, FileSystem.FileSystem>
 
 const makeStateServiceError = (message: string) =>
   new StateServiceError({ message })
 
+const mapPlatformError = (fallback: string) =>
+  (error: { readonly message: string }) =>
+    makeStateServiceError(error.message.length > 0 ? error.message : fallback)
+
 const defaultWriteRunState: WriteRunStateFn = (path, state) =>
-  Effect.tryPromise({
-    try: () => Bun.write(path, `${JSON.stringify(Schema.encodeSync(RunStateSchema)(state), null, 2)}\n`),
-    catch: (error) =>
-      makeStateServiceError(error instanceof Error ? error.message : `Unable to write ${path}`)
-  }).pipe(Effect.asVoid)
+  Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
+
+    yield* fs.writeFileString(
+      path,
+      `${JSON.stringify(Schema.encodeSync(RunStateSchema)(state), null, 2)}\n`
+    ).pipe(Effect.mapError(mapPlatformError(`Unable to write ${path}`)))
+  })
 
 export const makeStateService = (options: {
   readonly graph: TaskGraph
@@ -52,6 +61,7 @@ export const makeStateService = (options: {
   readonly writeRunState?: WriteRunStateFn
 }) =>
   Effect.gen(function*() {
+    const fs = yield* FileSystem.FileSystem
     const stateRootDir = options.stateRootDir ?? ".dagger/runs"
     const path = join(stateRootDir, `${options.runId}.json`)
     const writeRunState = options.writeRunState ?? defaultWriteRunState
@@ -63,13 +73,9 @@ export const makeStateService = (options: {
     const writerError = yield* Ref.make<StateServiceError | undefined>(undefined)
     const queue = yield* Queue.unbounded<WriterMessage>()
 
-    yield* Effect.tryPromise({
-      try: () => mkdir(stateRootDir, { recursive: true }),
-      catch: (error) =>
-        makeStateServiceError(
-          error instanceof Error ? error.message : `Unable to create ${stateRootDir}`
-        )
-    })
+    yield* fs.makeDirectory(stateRootDir, { recursive: true }).pipe(
+      Effect.mapError(mapPlatformError(`Unable to create ${stateRootDir}`))
+    )
     yield* writeRunState(path, initialState)
 
     const recordFailure = (error: StateServiceError) =>

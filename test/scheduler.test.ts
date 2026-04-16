@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
+import { BunFileSystem } from "@effect/platform-bun"
 import { Duration, Effect } from "effect"
 
 import { parseMarkdownGraph } from "../src/parse/markdown-graph"
@@ -121,7 +122,7 @@ describe("runScheduler", () => {
               })
           })
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     expect(starts.slice(0, 2).sort()).toEqual(["a", "b"])
@@ -162,7 +163,7 @@ describe("runScheduler", () => {
                   )
           })
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     expect(state.status).toBe("failed")
@@ -201,7 +202,7 @@ describe("runScheduler", () => {
                   )
           })
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     const terminalEventsByTask = state.events.reduce(

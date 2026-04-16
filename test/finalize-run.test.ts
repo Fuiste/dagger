@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
+import { BunFileSystem } from "@effect/platform-bun"
 import { Effect, Option } from "effect"
 
 import { renderDryRun } from "../src/app/run-do"
@@ -69,7 +70,7 @@ describe("finalizeRun", () => {
             exists
           }
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     expect(result).toEqual({
@@ -125,7 +126,7 @@ describe("finalizeRun", () => {
             exists
           }
         })
-      )
+      ).pipe(Effect.provide(BunFileSystem.layer))
     )
 
     expect(result.exists).toBe(false)
