@@ -8,7 +8,7 @@ import { Effect, Option } from "effect"
 import { renderDryRun } from "../src/app/run-do"
 import { makeRunConfig } from "../src/domain/config"
 import { computeExecutionLevels } from "../src/domain/task-graph"
-import { type Harness } from "../src/harness/harness"
+import { HarnessError, type Harness } from "../src/harness/harness"
 import { parseMarkdownGraph } from "../src/parse/markdown-graph"
 import { finalizeRun } from "../src/runtime/finalize-run"
 import { makeStateService } from "../src/state/state-service"
@@ -77,6 +77,61 @@ describe("finalizeRun", () => {
       summary: "summary for 2 tasks",
       exists: false
     })
+  })
+
+  test("still deletes the state file when summary generation fails", async () => {
+    const graph = await Effect.runPromise(parseMarkdownGraph(graphMarkdown))
+    const runConfig = await Effect.runPromise(
+      makeRunConfig({
+        planPath: "plan.md",
+        harness: "cursor",
+        model: Option.none(),
+        thinking: Option.none(),
+        maxConcurrency: Option.none(),
+        dryRun: false,
+        cwd: "/workspace/dagger"
+      })
+    )
+    const stateRootDir = await mkdtemp(join(tmpdir(), "dagger-finalize-"))
+    const harness: Harness = {
+      executeTask: () => Effect.succeed({}),
+      summarizeRun: () =>
+        Effect.fail(
+          new HarnessError({
+            message: "summary failed"
+          })
+        )
+    }
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const stateService = yield* makeStateService({
+            graph,
+            runId: "finalize-run-error",
+            stateRootDir
+          })
+          const runState = yield* stateService.snapshot
+          const exit = yield* Effect.exit(
+            finalizeRun({
+              harness,
+              runConfig,
+              stateService,
+              runState
+            })
+          )
+          const exists = yield* Effect.promise(() => Bun.file(stateService.path).exists())
+
+          return {
+            exit,
+            exists
+          }
+        })
+      )
+    )
+
+    expect(result.exists).toBe(false)
+    expect(result.exit._tag).toBe("Failure")
   })
 })
 
