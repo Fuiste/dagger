@@ -1,5 +1,6 @@
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 
+import { HarnessNameSchema, ThinkingLevelSchema } from "../domain/config"
 import {
   TaskDefinition,
   TaskDependency,
@@ -196,6 +197,31 @@ const parseMetadataItems = (section: RawMarkdownSection) =>
     return [...entries, ...block.items]
   }, [] as Array<string>)
 
+const decodeHarnessName = Schema.decodeUnknownOption(HarnessNameSchema)
+const decodeThinkingLevel = Schema.decodeUnknownOption(ThinkingLevelSchema)
+
+const decodeOptionalMetadata = <A>(
+  taskId: string,
+  label: string,
+  decode: (input: unknown) => { readonly _tag: "Some"; readonly value: A } | { readonly _tag: "None" },
+  value: string | undefined
+) =>
+  Effect.gen(function*() {
+    if (value === undefined) {
+      return undefined
+    }
+
+    const decoded = decode(value)
+
+    if (decoded._tag === "None") {
+      return yield* new TaskGraphError({
+        message: `Invalid ${label} "${value}" in task "${taskId}"`
+      })
+    }
+
+    return decoded.value
+  })
+
 const parseTaskDefinition = (section: RawMarkdownSection) =>
   Effect.gen(function*() {
     const taskId = section.title.trim()
@@ -246,6 +272,19 @@ const parseTaskDefinition = (section: RawMarkdownSection) =>
       })
     }
 
+    const harness = yield* decodeOptionalMetadata(
+      taskId,
+      "harness",
+      decodeHarnessName,
+      metadata.get("harness")
+    )
+    const thinking = yield* decodeOptionalMetadata(
+      taskId,
+      "thinking level",
+      decodeThinkingLevel,
+      metadata.get("thinking")
+    )
+
     const instructions = section.blocks
       .flatMap((block) => {
         switch (block._tag) {
@@ -263,10 +302,10 @@ const parseTaskDefinition = (section: RawMarkdownSection) =>
     return new TaskDefinition({
       id: taskId,
       prompt,
-      instructions: instructions.length > 0 ? instructions : undefined,
-      harness: metadata.get("harness") as TaskDefinition["harness"],
-      model: metadata.get("model"),
-      thinking: metadata.get("thinking") as TaskDefinition["thinking"]
+      ...(instructions.length > 0 ? { instructions } : {}),
+      ...(harness === undefined ? {} : { harness }),
+      ...(metadata.get("model") === undefined ? {} : { model: metadata.get("model") as string }),
+      ...(thinking === undefined ? {} : { thinking })
     })
   })
 

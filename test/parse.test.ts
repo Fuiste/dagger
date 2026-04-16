@@ -75,6 +75,48 @@ describe("parseMarkdownGraph", () => {
     }
   })
 
+  test("fails when a task declares an unknown harness", async () => {
+    const result = await Effect.runPromiseExit(
+      parseMarkdownGraph(`
+## Tasks
+
+### scaffold
+- prompt: Set up the project.
+- harness: lovable
+
+## Dependencies
+`)
+    )
+
+    expect(Exit.isFailure(result)).toBe(true)
+
+    if (Exit.isFailure(result)) {
+      expect(Cause.pretty(result.cause)).toContain('Invalid harness "lovable" in task "scaffold"')
+    }
+  })
+
+  test("fails when a task declares an invalid thinking level", async () => {
+    const result = await Effect.runPromiseExit(
+      parseMarkdownGraph(`
+## Tasks
+
+### scaffold
+- prompt: Set up the project.
+- thinking: galaxy-brain
+
+## Dependencies
+`)
+    )
+
+    expect(Exit.isFailure(result)).toBe(true)
+
+    if (Exit.isFailure(result)) {
+      expect(Cause.pretty(result.cause)).toContain(
+        'Invalid thinking level "galaxy-brain" in task "scaffold"'
+      )
+    }
+  })
+
   test("fails when the graph contains a cycle", async () => {
     const result = await Effect.runPromiseExit(
       parseMarkdownGraph(`
