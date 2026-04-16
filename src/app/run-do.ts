@@ -15,6 +15,9 @@ export class DoCommandError extends Schema.TaggedErrorClass<DoCommandError>()("D
   message: Schema.String
 }) {}
 
+const toDoCommandError = (error: { readonly message: string }) =>
+  new DoCommandError({ message: error.message })
+
 const readPlanMarkdown = (planPath: string) =>
   Effect.tryPromise({
     try: () => readFile(planPath, "utf8"),
@@ -78,20 +81,15 @@ const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>
         })
       }
     })
-  )
+  ).pipe(Effect.mapError(toDoCommandError))
 
 export const runDo = (runConfig: RunConfig) =>
   readPlanMarkdown(runConfig.planPath).pipe(
-    Effect.flatMap(parseMarkdownGraph),
+    Effect.flatMap((source) => parseMarkdownGraph(source).pipe(Effect.mapError(toDoCommandError))),
     Effect.flatMap((graph) =>
       runConfig.dryRun
         ? computeExecutionLevels(graph).pipe(
-            Effect.mapError(
-              (error) =>
-                new DoCommandError({
-                  message: error.message
-                })
-            ),
+            Effect.mapError(toDoCommandError),
             Effect.flatMap((levels) => Console.log(renderDryRun(runConfig.planPath, graph, levels)))
           )
         : executeGraph(runConfig, graph)
