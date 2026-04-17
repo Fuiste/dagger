@@ -33,6 +33,21 @@ const planMarkdown = `
 - scaffold -> runtime
 `
 
+const mixedHarnessPlanMarkdown = `
+## Tasks
+
+### default-task
+- prompt: Use the default harness settings.
+
+### codex-task
+- prompt: Use the codex override.
+- harness: codex
+- model: gpt-5.4
+- thinking: high
+
+## Dependencies
+`
+
 const makeTempPlan = async (markdown: string) => {
   const workspace = await mkdtemp(join(tmpdir(), "dagger-rundo-"))
   const planPath = join(workspace, "plan.md")
@@ -178,5 +193,110 @@ describe("runDo", () => {
     )
 
     expect(Exit.isSuccess(exit)).toBe(true)
+  })
+
+  test("routes each task through its effective harness config and keeps summary on the CLI harness", async () => {
+    const { workspace, planPath } = await makeTempPlan(mixedHarnessPlanMarkdown)
+    const runConfig = await Effect.runPromise(
+      makeRunConfig({
+        planPath,
+        harness: "cursor",
+        model: Option.some("composer-2"),
+        thinking: Option.some("medium"),
+        maxConcurrency: Option.some(1),
+        dryRun: false,
+        cwd: workspace
+      })
+    )
+
+    const result = await Effect.runPromise(
+      Effect.gen(function*() {
+        const taskCalls = yield* Ref.make<
+          Array<{
+            readonly harness: string
+            readonly taskId: string
+            readonly model: string | undefined
+            readonly thinking: string | undefined
+          }>
+        >([])
+        const summaryCalls = yield* Ref.make<Array<string>>([])
+
+        const cursorHarness: HarnessShape = {
+          executeTask: (input) =>
+            Effect.gen(function*() {
+              yield* Ref.update(taskCalls, (values) => [
+                ...values,
+                {
+                  harness: "cursor",
+                  taskId: input.task.id,
+                  model: input.taskRunConfig.model,
+                  thinking: input.taskRunConfig.thinking
+                }
+              ])
+
+              return { summary: `${input.task.id} via cursor` }
+            }),
+          summarizeRun: () =>
+            Effect.gen(function*() {
+              yield* Ref.update(summaryCalls, (values) => [...values, "cursor"])
+
+              return "cursor summary"
+            })
+        }
+        const codexHarness: HarnessShape = {
+          executeTask: (input) =>
+            Effect.gen(function*() {
+              yield* Ref.update(taskCalls, (values) => [
+                ...values,
+                {
+                  harness: "codex",
+                  taskId: input.task.id,
+                  model: input.taskRunConfig.model,
+                  thinking: input.taskRunConfig.thinking
+                }
+              ])
+
+              return { summary: `${input.task.id} via codex` }
+            }),
+          summarizeRun: () =>
+            Effect.gen(function*() {
+              yield* Ref.update(summaryCalls, (values) => [...values, "codex"])
+
+              return "codex summary"
+            })
+        }
+
+        yield* runDo(runConfig).pipe(
+          Effect.provideService(
+            HarnessRegistry,
+            makeHarnessRegistry({
+              cursor: cursorHarness,
+              codex: codexHarness
+            })
+          )
+        )
+
+        return {
+          taskCalls: yield* Ref.get(taskCalls),
+          summaryCalls: yield* Ref.get(summaryCalls)
+        }
+      }).pipe(Effect.provide(BunFileSystem.layer))
+    )
+
+    expect(result.taskCalls).toEqual([
+      {
+        harness: "cursor",
+        taskId: "default-task",
+        model: "composer-2",
+        thinking: "medium"
+      },
+      {
+        harness: "codex",
+        taskId: "codex-task",
+        model: "gpt-5.4",
+        thinking: "high"
+      }
+    ])
+    expect(result.summaryCalls).toEqual(["cursor"])
   })
 })

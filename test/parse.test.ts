@@ -95,6 +95,27 @@ describe("parseMarkdownGraph", () => {
     }
   })
 
+  test("accepts codex as a task harness override", async () => {
+    const graph = await Effect.runPromise(
+      parseMarkdownGraph(`
+## Tasks
+
+### scaffold
+- prompt: Set up the project.
+- harness: codex
+
+## Dependencies
+`)
+    )
+
+    expect(graph.tasks).toEqual([
+      expect.objectContaining({
+        id: "scaffold",
+        harness: "codex"
+      })
+    ])
+  })
+
   test("fails when a task declares an invalid thinking level", async () => {
     const result = await Effect.runPromiseExit(
       parseMarkdownGraph(`

@@ -71,4 +71,31 @@ describe("makeCli", () => {
       thinking: "high"
     })
   })
+
+  test("accepts codex as the explicit harness choice", async () => {
+    let captured: Record<string, unknown> | undefined
+
+    const program = Command.runWith(makeCli((config) =>
+      Effect.sync(() => {
+        captured = { ...config }
+      })
+    ), { version: "0.1.0" })
+
+    await Effect.runPromise(
+      program([
+        "do",
+        "plan.md",
+        "--harness",
+        "codex",
+        "--dry-run"
+      ]).pipe(Effect.provide(BunServices.layer))
+    )
+
+    expect(captured).toEqual({
+      cwd: process.cwd(),
+      dryRun: true,
+      harness: "codex",
+      planPath: "plan.md"
+    })
+  })
 })

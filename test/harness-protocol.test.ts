@@ -37,4 +37,20 @@ describe("parseAssistantMessage", () => {
     ])
     expect(parsed.plainText).toEqual(["working...", "final plain summary"])
   })
+
+  test("treats malformed event lines as plain assistant text", () => {
+    const parsed = parseAssistantMessage(
+      [
+        `${harnessEventPrefix}{"_tag":"TaskStartNoteEvent","note":"starting work"}`,
+        `${harnessEventPrefix}{not-json}`,
+        "final plain summary"
+      ].join("\n")
+    )
+
+    expect(parsed.events).toEqual([new TaskStartNoteEvent({ note: "starting work" })])
+    expect(parsed.plainText).toEqual([
+      `${harnessEventPrefix}{not-json}`,
+      "final plain summary"
+    ])
+  })
 })
