@@ -11,13 +11,13 @@ The project is written in [Bun](https://bun.sh) with [Effect v4](https://github.
 ```sh
 bun install
 bun test
-bun run src/index.ts do path/to/plan.md --harness cursor --dry-run
+bunx @fuiste/dagger do path/to/plan.md --harness cursor --dry-run
 ```
 
 A real run looks like:
 
 ```sh
-bun run src/index.ts do plan.md \
+dagger do plan.md \
   --harness codex \
   --model gpt-5.4 \
   --max-concurrency 3
@@ -26,6 +26,23 @@ bun run src/index.ts do plan.md \
 `--harness` is the required run default and also the harness used for the final run summary. Individual tasks may still override `harness`, `model`, and `thinking` in the markdown graph; task metadata takes precedence over the CLI defaults.
 
 See [`docs/task-graph-format.md`](docs/task-graph-format.md) for the markdown syntax and an example plan.
+
+## Install
+
+`dagger` is published as [`@fuiste/dagger`](https://www.npmjs.com/package/@fuiste/dagger) and expects Bun at runtime.
+
+Run it ad hoc with:
+
+```sh
+bunx @fuiste/dagger do plan.md --harness codex --dry-run
+```
+
+Or install it globally:
+
+```sh
+npm install -g @fuiste/dagger
+dagger do plan.md --harness codex --dry-run
+```
 
 ## Current fit
 
@@ -50,7 +67,7 @@ Right now `dagger` looks more compelling as a control and observability tool tha
 ## Known limitations
 
 - Worktree support is intentionally out of scope for this pass.
-- No npm distribution yet — run it from source with Bun.
+- The published package still expects Bun to be installed locally; this is a Bun-backed CLI, not a Node-native standalone binary.
 - Cursor Agent CLI itself may need `NODE_EXTRA_CA_CERTS` set in environments with a corporate TLS proxy; streaming sessions can still be blocked by SSL inspection of long-lived HTTP/2 connections.
 - Codex runs are ephemeral by default and currently rely on the local `codex` CLI being installed and authenticated.
 - End-to-end latency can still be significantly worse than a single-shot Codex run when the graph is tightly coupled or the final integration task does too much work.
