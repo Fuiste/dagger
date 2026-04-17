@@ -19,13 +19,23 @@ A real run looks like:
 ```sh
 bun run src/index.ts do plan.md \
   --harness codex \
-  --model gpt-5-codex \
+  --model gpt-5.4 \
   --max-concurrency 3
 ```
 
 `--harness` is the required run default and also the harness used for the final run summary. Individual tasks may still override `harness`, `model`, and `thinking` in the markdown graph; task metadata takes precedence over the CLI defaults.
 
 See [`docs/task-graph-format.md`](docs/task-graph-format.md) for the markdown syntax and an example plan.
+
+## Current fit
+
+Live QA has been most encouraging for source-grounded tasks that benefit from explicit intermediate artifacts, for example:
+
+- repo introspection or reporting tools built from multiple existing source files
+- migration-readiness or compliance audits where partial analysis is useful on its own
+- refactors where fact-extraction and implementation can be separated cleanly
+
+Right now `dagger` looks more compelling as a control and observability tool than as a pure speed play. Its best runs make progress legible mid-flight through task-level artifacts and archived state, even when the overall run is slower than a single large prompt.
 
 ## Architecture sketch
 
@@ -43,6 +53,9 @@ See [`docs/task-graph-format.md`](docs/task-graph-format.md) for the markdown sy
 - No npm distribution yet — run it from source with Bun.
 - Cursor Agent CLI itself may need `NODE_EXTRA_CA_CERTS` set in environments with a corporate TLS proxy; streaming sessions can still be blocked by SSL inspection of long-lived HTTP/2 connections.
 - Codex runs are ephemeral by default and currently rely on the local `codex` CLI being installed and authenticated.
+- End-to-end latency can still be significantly worse than a single-shot Codex run when the graph is tightly coupled or the final integration task does too much work.
+- Some Codex-backed runs have reached full task success but then hung in finalization instead of returning cleanly. The produced artifacts can still be correct, but runner completion reliability needs hardening.
+- Task decomposition does not yet make much weaker models a safe drop-in replacement for stronger ones on environment-discovery-heavy tasks; early analysis mistakes can still invalidate the whole graph.
 
 ## License
 
