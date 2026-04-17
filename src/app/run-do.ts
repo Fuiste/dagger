@@ -3,7 +3,12 @@ import { Console, Effect, FileSystem, Schema } from "effect"
 import { type RunConfig } from "../domain/config"
 import { computeExecutionLevels, type TaskGraph } from "../domain/task-graph"
 import { makeCursorHarness } from "../harness/cursor"
-import { Harness, type HarnessShape } from "../harness/harness"
+import {
+  HarnessRegistry,
+  type HarnessRegistryShape,
+  makeHarnessRegistry,
+  resolveTaskRunConfig
+} from "../harness/harness"
 import { finalizeRun } from "../runtime/finalize-run"
 import { runScheduler } from "../runtime/scheduler"
 import { parseMarkdownGraph } from "../parse/markdown-graph"
@@ -40,17 +45,15 @@ export const renderDryRun = (
     ...levels.map((level, index) => `Level ${index + 1}: ${level.join(", ")}`)
   ].join("\n")
 
-export const defaultHarnessForConfig = (runConfig: RunConfig): HarnessShape => {
-  switch (runConfig.harness) {
-    case "cursor":
-      return makeCursorHarness()
-  }
-}
+export const defaultHarnessRegistry = (): HarnessRegistryShape =>
+  makeHarnessRegistry({
+    cursor: makeCursorHarness()
+  })
 
 const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>
   Effect.scoped(
     Effect.gen(function*() {
-      const harness = yield* Harness
+      const harnessRegistry = yield* HarnessRegistry
       const stateService = yield* makeStateService({
         graph,
         runId: crypto.randomUUID(),
@@ -62,13 +65,16 @@ const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>
         ...(runConfig.maxConcurrency === undefined
           ? {}
           : { maxConcurrency: runConfig.maxConcurrency }),
-        executeTask: (task) =>
-          harness.executeTask({
-            runConfig,
+        executeTask: (task) => {
+          const taskRunConfig = resolveTaskRunConfig(runConfig, task)
+          const harness = harnessRegistry.get(taskRunConfig.harness)
+
+          return harness.executeTask({
+            taskRunConfig,
             task,
-            statePath: stateService.path,
-            cwd: runConfig.cwd
+            statePath: stateService.path
           })
+        }
       })
       const summary = yield* finalizeRun({
         runConfig,

@@ -1,13 +1,13 @@
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Effect } from "effect"
 
-import { defaultHarnessForConfig, runDo } from "./app/run-do"
+import { defaultHarnessRegistry, runDo } from "./app/run-do"
 import { makeProgram } from "./cli/do"
-import { Harness } from "./harness/harness"
+import { HarnessRegistry } from "./harness/harness"
 
 const main = makeProgram((runConfig) =>
   runDo(runConfig).pipe(
-    Effect.provideService(Harness, defaultHarnessForConfig(runConfig))
+    Effect.provideService(HarnessRegistry, defaultHarnessRegistry())
   )
 ).pipe(Effect.provide(BunServices.layer))
 

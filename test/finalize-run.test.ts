@@ -9,7 +9,12 @@ import { Effect, Option } from "effect"
 import { renderDryRun } from "../src/app/run-do"
 import { makeRunConfig } from "../src/domain/config"
 import { computeExecutionLevels } from "../src/domain/task-graph"
-import { Harness, HarnessError, type HarnessShape } from "../src/harness/harness"
+import {
+  HarnessError,
+  HarnessRegistry,
+  makeHarnessRegistry,
+  type HarnessShape
+} from "../src/harness/harness"
 import { parseMarkdownGraph } from "../src/parse/markdown-graph"
 import { finalizeRun } from "../src/runtime/finalize-run"
 import { makeStateService } from "../src/state/state-service"
@@ -62,7 +67,14 @@ describe("finalizeRun", () => {
             runConfig,
             stateService,
             runState
-          }).pipe(Effect.provideService(Harness, harness))
+          }).pipe(
+            Effect.provideService(
+              HarnessRegistry,
+              makeHarnessRegistry({
+                cursor: harness
+              })
+            )
+          )
           const exists = yield* Effect.promise(() => Bun.file(stateService.path).exists())
 
           return {
@@ -117,7 +129,14 @@ describe("finalizeRun", () => {
               runConfig,
               stateService,
               runState
-            }).pipe(Effect.provideService(Harness, harness))
+            }).pipe(
+              Effect.provideService(
+                HarnessRegistry,
+                makeHarnessRegistry({
+                  cursor: harness
+                })
+              )
+            )
           )
           const exists = yield* Effect.promise(() => Bun.file(stateService.path).exists())
 

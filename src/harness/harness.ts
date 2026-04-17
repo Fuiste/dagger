@@ -1,6 +1,6 @@
 import { Context, Effect, Schema } from "effect"
 
-import { type RunConfig } from "../domain/config"
+import { type HarnessName, type RunConfig, type ThinkingLevel } from "../domain/config"
 import { type TaskDefinition } from "../domain/task-graph"
 import { type RunState } from "../state/run-state"
 
@@ -8,18 +8,23 @@ export class HarnessError extends Schema.TaggedErrorClass<HarnessError>()("Harne
   message: Schema.String
 }) {}
 
+export type EffectiveTaskConfig = {
+  readonly harness: HarnessName
+  readonly model?: string
+  readonly thinking?: ThinkingLevel
+  readonly cwd: string
+}
+
 export type TaskHarnessInput = {
-  readonly runConfig: RunConfig
+  readonly taskRunConfig: EffectiveTaskConfig
   readonly task: TaskDefinition
   readonly statePath: string
-  readonly cwd: string
 }
 
 export type SummaryHarnessInput = {
   readonly runConfig: RunConfig
   readonly runState: RunState
   readonly statePath: string
-  readonly cwd: string
 }
 
 export type HarnessTaskResult = {
@@ -32,4 +37,32 @@ export type HarnessShape = {
   readonly summarizeRun: (input: SummaryHarnessInput) => Effect.Effect<string, HarnessError>
 }
 
-export class Harness extends Context.Service<Harness, HarnessShape>()("dagger/Harness") {}
+export type HarnessRegistryShape = {
+  readonly get: (name: HarnessName) => HarnessShape
+}
+
+export class HarnessRegistry extends Context.Service<HarnessRegistry, HarnessRegistryShape>()(
+  "dagger/HarnessRegistry"
+) {}
+
+export const makeHarnessRegistry = (registry: Readonly<Record<HarnessName, HarnessShape>>) => ({
+  get: (name: HarnessName) => registry[name]
+})
+
+export const resolveTaskRunConfig = (
+  runConfig: RunConfig,
+  task: TaskDefinition
+): EffectiveTaskConfig => ({
+  harness: task.harness ?? runConfig.harness,
+  ...(task.model === undefined
+    ? runConfig.model === undefined
+      ? {}
+      : { model: runConfig.model }
+    : { model: task.model }),
+  ...(task.thinking === undefined
+    ? runConfig.thinking === undefined
+      ? {}
+      : { thinking: runConfig.thinking }
+    : { thinking: task.thinking }),
+  cwd: runConfig.cwd
+})

@@ -52,11 +52,13 @@ const makeTaskPrompt = (input: TaskHarnessInput) =>
     "You are executing one task in a Dagger run.",
     renderTaskBody(input.task),
     renderStateInstructions(input.statePath),
-    input.runConfig.model === undefined ? undefined : `Preferred model: ${input.runConfig.model}`,
-    // cursor-agent doesn't expose a dedicated thinking flag, so this remains advisory prompt context.
-    input.runConfig.thinking === undefined
+    input.taskRunConfig.model === undefined
       ? undefined
-      : `Preferred thinking level: ${input.runConfig.thinking}`
+      : `Preferred model: ${input.taskRunConfig.model}`,
+    // cursor-agent doesn't expose a dedicated thinking flag, so this remains advisory prompt context.
+    input.taskRunConfig.thinking === undefined
+      ? undefined
+      : `Preferred thinking level: ${input.taskRunConfig.thinking}`
   ]).join("\n\n")
 
 const summarizeTasks = (runState: RunState) =>
@@ -122,7 +124,9 @@ export const makeCursorHarness = (options?: {
 }): HarnessShape => {
   const command = options?.command ?? process.env.DAGGER_CURSOR_COMMAND ?? defaultCursorCommand
   const extraArgs = tokenizeArgs(process.env.DAGGER_CURSOR_EXTRA_ARGS)
-  const makeArgs = (runConfig: TaskHarnessInput["runConfig"] | SummaryHarnessInput["runConfig"]) =>
+  const makeArgs = (
+    runConfig: TaskHarnessInput["taskRunConfig"] | SummaryHarnessInput["runConfig"]
+  ) =>
     compact([
       ...defaultCursorArgs,
       ...extraArgs,
@@ -132,7 +136,12 @@ export const makeCursorHarness = (options?: {
 
   return {
     executeTask: (input) =>
-      runCommand(command, makeArgs(input.runConfig), input.cwd, makeTaskPrompt(input)).pipe(
+      runCommand(
+        command,
+        makeArgs(input.taskRunConfig),
+        input.taskRunConfig.cwd,
+        makeTaskPrompt(input)
+      ).pipe(
         Effect.flatMap(ensureSuccessfulExit),
         Effect.map(({ stdout }) => {
           const parsed = parseHarnessOutput(stdout)
@@ -160,7 +169,7 @@ export const makeCursorHarness = (options?: {
         })
       ),
     summarizeRun: (input) =>
-      runCommand(command, makeArgs(input.runConfig), input.cwd, makeSummaryPrompt(input)).pipe(
+      runCommand(command, makeArgs(input.runConfig), input.runConfig.cwd, makeSummaryPrompt(input)).pipe(
         Effect.flatMap(ensureSuccessfulExit),
         Effect.map(({ stdout }) => {
           const parsed = parseHarnessOutput(stdout)

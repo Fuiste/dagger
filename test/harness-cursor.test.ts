@@ -7,6 +7,7 @@ import { Effect, Option } from "effect"
 
 import { makeRunConfig } from "../src/domain/config"
 import { TaskDefinition } from "../src/domain/task-graph"
+import { resolveTaskRunConfig } from "../src/harness/harness"
 import { makeCursorHarness } from "../src/harness/cursor"
 
 const makeRecordingHarness = async () => {
@@ -68,15 +69,15 @@ const makeTaskInput = async (options: { readonly model: Option.Option<string> })
       cwd: workspace
     })
   )
+  const task = new TaskDefinition({
+    id: "hello-task",
+    prompt: "Write a greeting file."
+  })
 
   return {
-    cwd: workspace,
-    runConfig,
+    taskRunConfig: resolveTaskRunConfig(runConfig, task),
     statePath: join(workspace, ".dagger", "runs", "state.json"),
-    task: new TaskDefinition({
-      id: "hello-task",
-      prompt: "Write a greeting file."
-    })
+    task
   } as const
 }
 

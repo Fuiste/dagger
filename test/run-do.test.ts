@@ -8,7 +8,12 @@ import { Cause, Effect, Exit, Option, Ref } from "effect"
 
 import { DoCommandError, runDo } from "../src/app/run-do"
 import { makeRunConfig } from "../src/domain/config"
-import { Harness, HarnessError, type HarnessShape } from "../src/harness/harness"
+import {
+  HarnessError,
+  HarnessRegistry,
+  makeHarnessRegistry,
+  type HarnessShape
+} from "../src/harness/harness"
 
 const planMarkdown = `
 ## Tasks
@@ -68,7 +73,14 @@ describe("runDo", () => {
             Effect.succeed(`Summarized ${input.runState.tasks.length} tasks`)
         }
 
-        yield* runDo(runConfig).pipe(Effect.provideService(Harness, harness))
+        yield* runDo(runConfig).pipe(
+          Effect.provideService(
+            HarnessRegistry,
+            makeHarnessRegistry({
+              cursor: harness
+            })
+          )
+        )
 
         return {
           taskCalls: yield* Ref.get(taskCalls),
@@ -113,7 +125,12 @@ describe("runDo", () => {
 
     const exit = await Effect.runPromiseExit(
       runDo(runConfig).pipe(
-        Effect.provideService(Harness, harness),
+        Effect.provideService(
+          HarnessRegistry,
+          makeHarnessRegistry({
+            cursor: harness
+          })
+        ),
         Effect.provide(BunFileSystem.layer)
       )
     )
@@ -147,7 +164,12 @@ describe("runDo", () => {
 
     const exit = await Effect.runPromiseExit(
       runDo(runConfig).pipe(
-        Effect.provideService(Harness, harness),
+        Effect.provideService(
+          HarnessRegistry,
+          makeHarnessRegistry({
+            cursor: harness
+          })
+        ),
         Effect.provide(BunFileSystem.layer)
       )
     )
