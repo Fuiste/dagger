@@ -60,7 +60,7 @@ describe("makeCli", () => {
     )
 
     expect(captured).toEqual({
-      cwd: "/Users/william.pelrine/work/dagger",
+      cwd: process.cwd(),
       dryRun: true,
       harness: "cursor",
       maxConcurrency: 3,
