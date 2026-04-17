@@ -48,6 +48,8 @@ describe("makeCli", () => {
       program([
         "do",
         "plan.md",
+        "--harness",
+        "cursor",
         "--dry-run",
         "--model",
         "gpt-5",

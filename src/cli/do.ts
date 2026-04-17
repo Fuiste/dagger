@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 
 import {
+  type HarnessName,
   type RunConfig,
   type ThinkingLevel,
   makeRunConfig
@@ -9,6 +10,7 @@ import {
 
 const version = "0.1.0"
 
+const harnessChoices = ["cursor", "codex"] as const satisfies ReadonlyArray<HarnessName>
 const thinkingChoices = ["low", "medium", "high"] as const satisfies ReadonlyArray<ThinkingLevel>
 
 export const makeDoCommand = <E, R>(runDo: (config: RunConfig) => Effect.Effect<void, E, R>) =>
@@ -16,7 +18,7 @@ export const makeDoCommand = <E, R>(runDo: (config: RunConfig) => Effect.Effect<
     "do",
     {
       planPath: Argument.string("plan"),
-      harness: Flag.choice("harness", ["cursor"]).pipe(Flag.withDefault("cursor")),
+      harness: Flag.choice("harness", harnessChoices),
       model: Flag.optional(Flag.string("model")),
       thinking: Flag.optional(Flag.choice("thinking", thinkingChoices)),
       maxConcurrency: Flag.optional(Flag.integer("max-concurrency")),
