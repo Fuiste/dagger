@@ -4,20 +4,19 @@ import { type TaskDefinition } from "../domain/task-graph"
 import { type RunState } from "../state/run-state"
 import {
   type HarnessShape,
-  HarnessError,
   type SummaryHarnessInput,
   type TaskHarnessInput
 } from "./harness"
-import { TaskFinishNoteEvent, TaskStartNoteEvent, parseHarnessOutput } from "./protocol"
+import {
+  compactStrings,
+  ensureSuccessfulExit,
+  runHarnessCommand,
+  tokenizeArgs
+} from "./process"
+import { TaskFinishNoteEvent, TaskStartNoteEvent, parseAssistantMessage } from "./protocol"
 
 const defaultCursorCommand = "cursor-agent"
 const defaultCursorArgs = ["-p", "--force", "--output-format", "text"] as const
-
-const compact = (parts: ReadonlyArray<string | undefined>) =>
-  parts.filter((part): part is string => part !== undefined && part.length > 0)
-
-const tokenizeArgs = (value: string | undefined) =>
-  value === undefined ? [] : value.split(/\s+/).filter((token) => token.length > 0)
 
 const compactTaskResult = (result: {
   readonly note: string | undefined
@@ -33,7 +32,7 @@ const findLastEvent = <A>(
 ) => [...values].reverse().find(predicate)
 
 const renderTaskBody = (task: TaskDefinition) =>
-  compact([
+  compactStrings([
     `Task ID: ${task.id}`,
     `Task Prompt: ${task.prompt}`,
     task.instructions === undefined ? undefined : `Additional Instructions:\n${task.instructions}`
@@ -48,7 +47,7 @@ const renderStateInstructions = (statePath: string) =>
   ].join("\n")
 
 const makeTaskPrompt = (input: TaskHarnessInput) =>
-  compact([
+  compactStrings([
     "You are executing one task in a Dagger run.",
     renderTaskBody(input.task),
     renderStateInstructions(input.statePath),
@@ -67,57 +66,13 @@ const summarizeTasks = (runState: RunState) =>
     .join("\n")
 
 const makeSummaryPrompt = (input: SummaryHarnessInput) =>
-  compact([
+  compactStrings([
     "Summarize this completed Dagger run for the CLI user.",
     `State file: ${input.statePath}`,
     "Keep the summary concise and outcome-focused.",
     "Task statuses:",
     summarizeTasks(input.runState)
   ]).join("\n\n")
-
-const runCommand = (command: string, args: ReadonlyArray<string>, cwd: string, prompt: string) =>
-  Effect.tryPromise({
-    try: async () => {
-      const subprocess = Bun.spawn([command, ...args], {
-        cwd,
-        env: process.env,
-        stdin: new Blob([prompt]),
-        stdout: "pipe",
-        stderr: "pipe"
-      })
-      const [exitCode, stdout, stderr] = await Promise.all([
-        subprocess.exited,
-        new Response(subprocess.stdout).text(),
-        new Response(subprocess.stderr).text()
-      ])
-
-      return {
-        exitCode,
-        stdout,
-        stderr
-      }
-    },
-    catch: (error) =>
-      new HarnessError({
-        message: error instanceof Error ? error.message : "Unable to start harness command"
-      })
-  })
-
-const ensureSuccessfulExit = (result: {
-  readonly exitCode: number
-  readonly stdout: string
-  readonly stderr: string
-}) =>
-  result.exitCode === 0
-    ? Effect.succeed(result)
-    : Effect.fail(
-        new HarnessError({
-          message: compact([
-            `Harness command failed with exit code ${result.exitCode}.`,
-            result.stderr.trim()
-          ]).join("\n")
-        })
-      )
 
 export const makeCursorHarness = (options?: {
   readonly command?: string
@@ -127,7 +82,7 @@ export const makeCursorHarness = (options?: {
   const makeArgs = (
     runConfig: TaskHarnessInput["taskRunConfig"] | SummaryHarnessInput["runConfig"]
   ) =>
-    compact([
+    compactStrings([
       ...defaultCursorArgs,
       ...extraArgs,
       runConfig.model === undefined ? undefined : "--model",
@@ -136,15 +91,15 @@ export const makeCursorHarness = (options?: {
 
   return {
     executeTask: (input) =>
-      runCommand(
+      runHarnessCommand({
         command,
-        makeArgs(input.taskRunConfig),
-        input.taskRunConfig.cwd,
-        makeTaskPrompt(input)
-      ).pipe(
-        Effect.flatMap(ensureSuccessfulExit),
+        args: makeArgs(input.taskRunConfig),
+        cwd: input.taskRunConfig.cwd,
+        stdin: makeTaskPrompt(input)
+      }).pipe(
+        Effect.flatMap((result) => ensureSuccessfulExit(result, "Cursor harness command")),
         Effect.map(({ stdout }) => {
-          const parsed = parseHarnessOutput(stdout)
+          const parsed = parseAssistantMessage(stdout)
           const startNote = parsed.events.find((event) => event instanceof TaskStartNoteEvent)
           const finishNote = findLastEvent(
             parsed.events,
@@ -169,10 +124,15 @@ export const makeCursorHarness = (options?: {
         })
       ),
     summarizeRun: (input) =>
-      runCommand(command, makeArgs(input.runConfig), input.runConfig.cwd, makeSummaryPrompt(input)).pipe(
-        Effect.flatMap(ensureSuccessfulExit),
+      runHarnessCommand({
+        command,
+        args: makeArgs(input.runConfig),
+        cwd: input.runConfig.cwd,
+        stdin: makeSummaryPrompt(input)
+      }).pipe(
+        Effect.flatMap((result) => ensureSuccessfulExit(result, "Cursor harness command")),
         Effect.map(({ stdout }) => {
-          const parsed = parseHarnessOutput(stdout)
+          const parsed = parseAssistantMessage(stdout)
           const finishNote = findLastEvent(
             parsed.events,
             (event): event is TaskFinishNoteEvent => event instanceof TaskFinishNoteEvent

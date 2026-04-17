@@ -5,8 +5,8 @@ import {
   TaskFinishNoteEvent,
   TaskStartNoteEvent,
   harnessEventPrefix,
+  parseAssistantMessage,
   parseHarnessEventLine,
-  parseHarnessOutput
 } from "../src/harness/protocol"
 
 describe("parseHarnessEventLine", () => {
@@ -20,9 +20,9 @@ describe("parseHarnessEventLine", () => {
   })
 })
 
-describe("parseHarnessOutput", () => {
-  test("separates structured events from plain stdout", () => {
-    const parsed = parseHarnessOutput(
+describe("parseAssistantMessage", () => {
+  test("separates structured events from plain assistant text", () => {
+    const parsed = parseAssistantMessage(
       [
         `${harnessEventPrefix}{"_tag":"TaskStartNoteEvent","note":"starting work"}`,
         "working...",

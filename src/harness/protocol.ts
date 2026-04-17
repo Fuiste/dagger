@@ -28,11 +28,11 @@ export const parseHarnessEventLine = (line: string): Option.Option<HarnessEvent>
     )
   } catch {
     return Option.none()
-  }
+    }
 }
 
-export const parseHarnessOutput = (output: string) =>
-  output.split(/\r?\n/).reduce(
+export const parseAssistantMessage = (message: string) =>
+  message.split(/\r?\n/).reduce(
     (state, line) => {
       const event = parseHarnessEventLine(line)
 
@@ -52,3 +52,5 @@ export const parseHarnessOutput = (output: string) =>
       plainText: [] as Array<string>
     }
   )
+
+export const parseHarnessOutput = parseAssistantMessage
