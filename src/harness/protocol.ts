@@ -1,5 +1,7 @@
 import { Option, Schema } from "effect"
 
+import { type HarnessTaskResult } from "./harness"
+
 export const harnessEventPrefix = "DAGGER_EVENT "
 
 export class TaskStartNoteEvent extends Schema.TaggedClass<TaskStartNoteEvent>()("TaskStartNoteEvent", {
@@ -54,3 +56,54 @@ export const parseAssistantMessage = (message: string) =>
   )
 
 export const parseHarnessOutput = parseAssistantMessage
+
+const compactTaskResult = (result: {
+  readonly note: string | undefined
+  readonly summary: string | undefined
+}): HarnessTaskResult => ({
+  ...(result.note === undefined ? {} : { note: result.note }),
+  ...(result.summary === undefined ? {} : { summary: result.summary })
+})
+
+const findLastEvent = <A>(
+  values: ReadonlyArray<A>,
+  predicate: (value: A) => boolean
+) => [...values].reverse().find(predicate)
+
+export const taskResultFromAssistantMessage = (message: string): HarnessTaskResult => {
+  const parsed = parseAssistantMessage(message)
+  const startNote = parsed.events.find((event) => event instanceof TaskStartNoteEvent)
+  const finishNote = findLastEvent(
+    parsed.events,
+    (event): event is TaskFinishNoteEvent => event instanceof TaskFinishNoteEvent
+  )
+  const summaryText = parsed.plainText.join("\n").trim()
+
+  return compactTaskResult({
+    note:
+      finishNote instanceof TaskFinishNoteEvent
+        ? finishNote.note
+        : startNote instanceof TaskStartNoteEvent
+          ? startNote.note
+          : undefined,
+    summary:
+      finishNote instanceof TaskFinishNoteEvent
+        ? finishNote.summary ?? summaryText
+        : summaryText.length > 0
+          ? summaryText
+          : undefined
+  })
+}
+
+export const summaryFromAssistantMessage = (message: string) => {
+  const parsed = parseAssistantMessage(message)
+  const finishNote = findLastEvent(
+    parsed.events,
+    (event): event is TaskFinishNoteEvent => event instanceof TaskFinishNoteEvent
+  )
+  const summaryText = parsed.plainText.join("\n").trim()
+
+  return finishNote instanceof TaskFinishNoteEvent
+    ? finishNote.summary ?? finishNote.note ?? summaryText
+    : summaryText
+}

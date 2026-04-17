@@ -2,6 +2,7 @@ import { Console, Effect, FileSystem, Schema } from "effect"
 
 import { type RunConfig } from "../domain/config"
 import { computeExecutionLevels, type TaskGraph } from "../domain/task-graph"
+import { makeCodexHarness } from "../harness/codex"
 import { makeCursorHarness } from "../harness/cursor"
 import {
   HarnessRegistry,
@@ -47,7 +48,8 @@ export const renderDryRun = (
 
 export const defaultHarnessRegistry = (): HarnessRegistryShape =>
   makeHarnessRegistry({
-    cursor: makeCursorHarness()
+    cursor: makeCursorHarness(),
+    codex: makeCodexHarness()
   })
 
 const executeGraph = (runConfig: RunConfig, graph: TaskGraph) =>

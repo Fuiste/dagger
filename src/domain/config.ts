@@ -1,6 +1,6 @@
 import { Effect, Option, Schema } from "effect"
 
-export const HarnessNameSchema = Schema.Literal("cursor")
+export const HarnessNameSchema = Schema.Literals(["cursor", "codex"])
 export type HarnessName = typeof HarnessNameSchema.Type
 
 export const ThinkingLevelSchema = Schema.Literals(["low", "medium", "high"])

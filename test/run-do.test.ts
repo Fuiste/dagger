@@ -77,7 +77,8 @@ describe("runDo", () => {
           Effect.provideService(
             HarnessRegistry,
             makeHarnessRegistry({
-              cursor: harness
+              cursor: harness,
+              codex: harness
             })
           )
         )
@@ -128,7 +129,8 @@ describe("runDo", () => {
         Effect.provideService(
           HarnessRegistry,
           makeHarnessRegistry({
-            cursor: harness
+            cursor: harness,
+            codex: harness
           })
         ),
         Effect.provide(BunFileSystem.layer)
@@ -167,7 +169,8 @@ describe("runDo", () => {
         Effect.provideService(
           HarnessRegistry,
           makeHarnessRegistry({
-            cursor: harness
+            cursor: harness,
+            codex: harness
           })
         ),
         Effect.provide(BunFileSystem.layer)

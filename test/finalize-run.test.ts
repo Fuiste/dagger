@@ -71,7 +71,8 @@ describe("finalizeRun", () => {
             Effect.provideService(
               HarnessRegistry,
               makeHarnessRegistry({
-                cursor: harness
+                cursor: harness,
+                codex: harness
               })
             )
           )
@@ -133,7 +134,8 @@ describe("finalizeRun", () => {
               Effect.provideService(
                 HarnessRegistry,
                 makeHarnessRegistry({
-                  cursor: harness
+                  cursor: harness,
+                  codex: harness
                 })
               )
             )
