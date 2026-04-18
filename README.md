@@ -1,78 +1,98 @@
 # dagger
 
-> **Status:** work in progress. APIs, flags, and file formats are unstable and will change without notice.
+`dagger` v1 is an event-sourced DAG execution engine for existing agent chats.
 
-`dagger` is a CLI that builds software from a task graph described in markdown. Each node in the graph is handed to a pluggable coding harness, and the graph is executed maximally in parallel — a task fires the moment all of its parents succeed. A final harness call summarizes the run from an ephemeral state document, which is then deleted.
+It does not create plans. It runs supplied YAML DAG plans, routes model tasks to Codex or Cursor according to task role and runtime profile, records append-only run events, and keeps intermediate artifacts structured instead of turning the whole run into one long prose braid.
 
-The project is written in [Bun](https://bun.sh) with [Effect v4](https://github.com/Effect-TS/effect-smol) (beta), and leans on structured concurrency, typed errors, and the platform `FileSystem` service rather than ad-hoc I/O.
+## What It Is Good At
 
-## Quick start
+- delegating a separable slice of work to a better-suited model
+- preserving observability, cache reuse, and resumability across repeated runs
+- producing structured design, review, extraction, and validation artifacts for the current chat thread to consume
+
+The canonical example is a full site redesign where the current Codex thread keeps business logic ownership while Dagger delegates the design subtree to Opus through Cursor and returns implementation-oriented artifacts.
+
+## Quick Start
 
 ```sh
 bun install
 bun test
-bunx @fuiste/dagger do path/to/plan.md --harness cursor --dry-run
+dagger run examples/site-redesign.plan.yaml --dry-run
+dagger run examples/site-redesign.plan.yaml --profile balanced --max-concurrency 3
 ```
 
-A real run looks like:
+## CLI
 
 ```sh
-dagger do plan.md \
-  --harness codex \
-  --model gpt-5.4 \
-  --max-concurrency 3
+dagger run path/to/plan.yaml \
+  --profile balanced \
+  --max-concurrency 3 \
+  --events pretty
 ```
 
-`--harness` is the required run default and also the harness used for the final run summary. Individual tasks may still override `harness`, `model`, and `thinking` in the markdown graph; task metadata takes precedence over the CLI defaults.
+Important flags:
 
-See [`docs/task-graph-format.md`](docs/task-graph-format.md) for the markdown syntax and an example plan.
+- `--dry-run`: validate the plan shape, show execution levels, and show routed model tasks.
+- `--resume`: continue the last unfinished run for the same plan digest.
+- `--artifacts-dir PATH`: relocate run logs, projections, transcripts, and cache metadata.
 
-## Install
+## Plan Format
 
-`dagger` is published as [`@fuiste/dagger`](https://www.npmjs.com/package/@fuiste/dagger) and expects Bun at runtime.
+Plans are YAML and versioned:
 
-Run it ad hoc with:
-
-```sh
-bunx @fuiste/dagger do plan.md --harness codex --dry-run
+```yaml
+version: 1
+defaults:
+  profile: balanced
+tasks:
+  - id: design-direction
+    kind: model
+    role: designer
+    prompt: Produce an implementation-oriented redesign direction.
+    outputs:
+      - id: design_spec
+        path: .dagger/generated/design-spec.json
+        format: json
 ```
 
-Or install it globally:
+Supported task kinds:
 
-```sh
-npm install -g @fuiste/dagger
-dagger do plan.md --harness codex --dry-run
-```
+- `model`
+- `command`
+- `reduce`
+- `assert`
 
-## Current fit
+See [docs/v1-plan-format.md](docs/v1-plan-format.md) for the full format and [examples/site-redesign.plan.yaml](examples/site-redesign.plan.yaml) for the intended “design subtree delegated out of the current chat” example.
 
-Live QA has been most encouraging for source-grounded tasks that benefit from explicit intermediate artifacts, for example:
+## Skill
 
-- repo introspection or reporting tools built from multiple existing source files
-- migration-readiness or compliance audits where partial analysis is useful on its own
-- refactors where fact-extraction and implementation can be separated cleanly
+This repo ships a repo-local skill at [SKILL.md](SKILL.md). Point an agent at it when you want help deciding:
 
-Right now `dagger` looks more compelling as a control and observability tool than as a pure speed play. Its best runs make progress legible mid-flight through task-level artifacts and archived state, even when the overall run is slower than a single large prompt.
+- whether Dagger is actually a win
+- how to author a good DAG plan
+- which roles to use
+- when a task should stay in the current thread instead
 
-## Architecture sketch
+## Runtime Model Routing
 
-- `src/cli` — Effect CLI entry points and flag parsing.
-- `src/domain` — `RunConfig`, harness/thinking schemas.
-- `src/parse` — markdown → `TaskGraph` parser with schema-validated metadata.
-- `src/runtime` — DAG scheduler, run finalization, state persistence.
-- `src/state` — ephemeral run state service (single-writer queue, surfaced writer errors).
-- `src/harness` — harness registry, Cursor/Codex adapters, shared prompts/process helpers, and the `DAGGER_EVENT` assistant-message protocol.
-- `test/` — unit and integration tests (scheduler, state service, parser, harness, end-to-end `runDo`).
+Balanced defaults:
 
-## Known limitations
+- `designer` -> Cursor `claude-opus-4-7-thinking-high`
+- `frontend_implementer` -> Codex `gpt-5.4`
+- `backend_implementer` -> Codex `gpt-5.4`
+- `reviewer` -> Codex `gpt-5.4`
+- `cheap_reader` -> Cursor `composer-2`
 
-- Worktree support is intentionally out of scope for this pass.
-- The published package still expects Bun to be installed locally; this is a Bun-backed CLI, not a Node-native standalone binary.
-- Cursor Agent CLI itself may need `NODE_EXTRA_CA_CERTS` set in environments with a corporate TLS proxy; streaming sessions can still be blocked by SSL inspection of long-lived HTTP/2 connections.
-- Codex runs are ephemeral by default and currently rely on the local `codex` CLI being installed and authenticated.
-- End-to-end latency can still be significantly worse than a single-shot Codex run when the graph is tightly coupled or the final integration task does too much work.
-- Some Codex-backed runs have reached full task success but then hung in finalization instead of returning cleanly. The produced artifacts can still be correct, but runner completion reliability needs hardening.
-- Task decomposition does not yet make much weaker models a safe drop-in replacement for stronger ones on environment-discovery-heavy tasks; early analysis mistakes can still invalidate the whole graph.
+Plans can override provider or model per task, but the default design is role-first rather than vendor-first.
+
+## Architecture
+
+- append-only events live in `.dagger/runs/<runId>/events.ndjson`
+- projections derive task state, artifacts, timings, and usage totals
+- transcripts are stored per task for observability
+- cache entries are keyed by task definition plus declared inputs plus runtime profile
+
+The old markdown graph and benchmark harness are still present in this repo for historical comparison and internal measurement, but the public v1 surface is `dagger run <plan.yaml>`.
 
 ## License
 

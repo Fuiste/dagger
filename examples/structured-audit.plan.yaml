@@ -1,0 +1,42 @@
+version: 1
+defaults:
+  profile: cheap
+tasks:
+  - id: extract-compose-findings
+    kind: model
+    role: cheap_reader
+    prompt: >
+      Read the compose and combinator sources plus their tests. Emit structured findings with
+      file references, claims, and missing coverage notes.
+    inputs:
+      files:
+        - src/compose.ts
+        - src/combinators.ts
+        - test/compose.test.ts
+        - README.md
+    outputs:
+      - id: findings
+        path: .dagger/generated/audit/findings.json
+        format: json
+
+  - id: pack-report
+    kind: reduce
+    dependsOn: [extract-compose-findings]
+    operation: json-array
+    inputs:
+      artifacts:
+        - taskId: extract-compose-findings
+          artifactId: findings
+    outputs:
+      - id: report_inputs
+        path: .dagger/generated/audit/report-inputs.json
+        format: json
+
+  - id: verify-report-pack
+    kind: assert
+    dependsOn: [pack-report]
+    requiredArtifacts:
+      - taskId: pack-report
+        artifactId: report_inputs
+    commands:
+      - test -f .dagger/generated/audit/report-inputs.json
