@@ -1,10 +1,13 @@
 {
   "name": "@fuiste/dagger",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
-  "description": "Task-graph-driven coding CLI that orchestrates Cursor and Codex in parallel with Bun.",
+  "description": "Event-sourced DAG execution engine for agent chats, routing specialist tasks across Codex and Cursor.",
   "bin": {
     "dagger": "./bin/dagger.js"
+  },
+  "exports": {
+    ".": "./src/v1/index.ts"
   },
   "files": [
     "bin",
@@ -35,6 +38,10 @@
     "bun": ">=1.3.10"
   },
   "scripts": {
+    "benchmark:preflight": "bun run src/benchmark/cli.ts preflight",
+    "benchmark:run": "bun run src/benchmark/cli.ts run",
+    "benchmark:report": "bun run src/benchmark/cli.ts report",
+    "benchmark:tasks": "bun run src/benchmark/cli.ts tasks",
     "check": "tsc --noEmit",
     "test": "bun test",
     "start": "bun run src/index.ts",
@@ -43,7 +50,8 @@
   "dependencies": {
     "@effect/platform-bun": "^4.0.0-beta.50",
     "effect": "^4.0.0-beta.50",
-    "markdown-it": "^14.1.1"
+    "markdown-it": "^14.1.1",
+    "yaml": "^2.8.1"
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",

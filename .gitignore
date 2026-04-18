@@ -1,4 +1,5 @@
 .dagger/
+benchmark-results/
 node_modules/
 coverage/
 dist/

@@ -1,0 +1,70 @@
+version: 1
+defaults:
+  profile: balanced
+tasks:
+  - id: extract-constraints
+    kind: model
+    role: cheap_reader
+    prompt: >
+      Read the current marketing route and shared UI primitives. Extract the existing
+      product story, trust signals, and any hard constraints the redesign must preserve.
+    inputs:
+      files:
+        - app/routes/transformations.tsx
+        - app/components/marketing/Hero.tsx
+        - app/styles/global.css
+    outputs:
+      - id: constraints
+        path: .dagger/generated/site-redesign/constraints.json
+        format: json
+
+  - id: design-direction
+    kind: model
+    role: designer
+    dependsOn: [extract-constraints]
+    prompt: >
+      Produce a full-site redesign direction for logged-out marketing visitors. Emphasize
+      hierarchy, typography, visual language, motion intent, and CTA clarity. The output
+      should be implementation-oriented rather than vague moodboard prose.
+    inputs:
+      artifacts:
+        - taskId: extract-constraints
+          artifactId: constraints
+    outputs:
+      - id: design_spec
+        path: .dagger/generated/site-redesign/design-spec.json
+        format: json
+      - id: copy_notes
+        path: .dagger/generated/site-redesign/copy-notes.md
+        format: markdown
+
+  - id: component-targets
+    kind: model
+    role: reviewer
+    dependsOn: [design-direction]
+    prompt: >
+      Translate the redesign into concrete component targets for the current Codex thread:
+      which files should change, what each section needs, and what must stay untouched so
+      the business logic owner can integrate safely.
+    inputs:
+      artifacts:
+        - taskId: design-direction
+          artifactId: design_spec
+        - taskId: design-direction
+          artifactId: copy_notes
+    outputs:
+      - id: implementation_targets
+        path: .dagger/generated/site-redesign/implementation-targets.json
+        format: json
+
+  - id: verify-design-pack
+    kind: assert
+    dependsOn: [component-targets]
+    requiredArtifacts:
+      - taskId: design-direction
+        artifactId: design_spec
+      - taskId: component-targets
+        artifactId: implementation_targets
+    commands:
+      - test -f .dagger/generated/site-redesign/design-spec.json
+      - test -f .dagger/generated/site-redesign/implementation-targets.json
